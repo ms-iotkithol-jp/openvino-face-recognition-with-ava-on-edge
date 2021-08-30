@@ -1,0 +1,1 @@
+# openvino-face-recognition-with-ava-on-edge
