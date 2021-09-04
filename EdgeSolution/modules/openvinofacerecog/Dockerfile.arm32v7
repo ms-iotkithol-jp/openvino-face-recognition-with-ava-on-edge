@@ -1,0 +1,119 @@
+FROM arm32v7/python:3.7-slim-buster
+
+SHELL ["/bin/bash", "-c"]
+
+RUN apt-get update && \
+    apt-get install -y sudo iproute2 && \
+    apt-get install -y build-essential cmake  wget git curl unzip  automake libtool autoconf ca-certificates libgtk2.0-dev pkg-config libavcodec-dev libavformat-dev libswscale-dev libatlas-base-dev python3-scipy && \
+    apt-get install -y  libffi-dev libbz2-dev liblzma-dev  libncurses5-dev libgdbm-dev zlib1g-dev libreadline-dev libssl-dev tk-dev libncursesw5-dev libc6-dev openssl liblapack-dev gfortran python-dev python3-dev python3-pip libpython3-dev python3-numpy python3-h5py ffmpeg libopenexr-dev libgtk-3-dev && \
+    apt-get install -y libboost-regex-dev libcairo2-dev libpango1.0-dev libglib2.0-dev libgstreamer1.0-0  gstreamer1.0-plugins-base libopenblas-dev && \
+    apt-get install -y libusb-1.0-0-dev udev && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN mkdir /app
+COPY * /app/
+
+WORKDIR /build
+
+# Get library source from open_model_zoo
+RUN git clone -b 2021.4 --depth 1 https://github.com/openvinotoolkit/open_model_zoo.git
+RUN mkdir /app/lib
+RUN cp -r open_model_zoo/demos/common/python/* /app/lib
+RUN cp open_model_zoo/demos/face_recognition_demo/python/*.py /app
+RUN rm -fr open_model_zoo
+
+ENV INTEL_OPENVINO_DIR /opt/intel/openvino_2021
+
+RUN wget https://storage.openvinotoolkit.org/repositories/openvino/packages/2021.4/l_openvino_toolkit_runtime_raspbian_p_2021.4.582.tgz && \
+    mkdir -p /opt/intel/openvino_2021 && \
+    tar -xf l_openvino_toolkit_runtime_raspbian_p_2021.4.582.tgz --strip 1 -C /opt/intel/openvino_2021 && \
+    usermod -a -G users "$(whoami)" && \
+    source /opt/intel/openvino_2021/bin/setupvars.sh && \
+#    cat /opt/intel/openvino_2021/bin/setupvars.sh >> ~/.bashrc && \
+    rm *.tgz
+
+RUN sh /opt/intel/openvino_2021/install_dependencies/install_NCS_udev_rules.sh
+
+# build and install OpenCV
+RUN cd ~ && \
+    git clone --depth 1 --branch 4.5.2 https://github.com/opencv/opencv.git && \
+    cd opencv && mkdir build && cd build && \
+    cmake –DCMAKE_BUILD_TYPE=Release –DCMAKE_INSTALL_PREFIX=/usr/local .. && \
+    make -j4 && \
+    make install
+
+# build and install OpenVino Toolkit including nGraph
+RUN cp /app/os-release /etc/
+RUN cd ~ && \
+    git clone --depth 1 --branch 2021.3 https://github.com/openvinotoolkit/openvino.git && \
+    cd openvino/ && \
+    git submodule update --init --recursive && \
+    sh ./install_build_dependencies.sh && \
+    export OpenCV_DIR=/usr/local/lib/cmake/opencv4 && \
+    cd inference-engine/ie_bridges/python/ && \
+    pip install -r requirements.txt && \
+    cd ~/openvino/ && \
+    mkdir build && cd build && \
+    cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/home/pi/openvino_dist -DENABLE_MKL_DNN=OFF -DENABLE_CLDNN=OFF -DENABLE_GNA=OFF -DENABLE_SSE42=OFF -DTHREADING=SEQ -DENABLE_OPENCV=OFF -DNGRAPH_PYTHON_BUILD_ENABLE=ON -DNGRAPH_ONNX_IMPORT_ENABLE=ON -DENABLE_PYTHON=ON -DPYTHON_EXECUTABLE=$(which python3.7) -DPYTHON_LIBRARY=/usr/local/lib/libpython3.7m.so -DPYTHON_INCLUDE_DIR=/usr/local/include/python3.7m -DCMAKE_CXX_FLAGS=-latomic .. && \
+    make -j4 && \
+    make install && \
+    cd /home/pi/openvino_dist && \
+    cp -r * /opt/intel/openvino_2021/
+
+RUN cd ~ && rm -fr openvino opencv
+
+RUN pip3 install --upgrade pip
+
+RUN pip3 install cython
+
+# RUN pip3 install  https://www.piwheels.org/simple/numpy/numpy-1.19.5-cp37-cp37m-linux_armv7l.whl
+# Face Recognition should use 1.19? no! 
+# RUN pip3 install numpy --upgrade
+RUN pip3 install numpy
+
+RUN pip3 install https://www.piwheels.org/simple/opencv-python/opencv_python-4.5.3.56-cp37-cp37m-linux_armv7l.whl
+
+# Thank you for https://teratail.com/questions/239230
+RUN pip3 install pybind11
+RUN pip3 install scipy
+
+RUN pip3 install https://www.piwheels.org/simple/pillow/Pillow-8.3.1-cp37-cp37m-linux_armv7l.whl#sha256=dce0a6e85ddc74cefec738d9939befb0ecd78560cca8d0dd1e95ae8533127c9d
+RUN pip3 install flask[async]
+RUN pip3 install requests
+# following order is so important.
+RUN pip3 install aiohttp
+RUN pip3 install cryptography==2.1.4
+RUN pip3 install azure-storage-blob==12.0.0
+RUN pip3 install azure-mgmt-storage
+RUN pip3 install azure-iot-device~=2.7.0
+
+# ENVIRONMENT SETTING FOR OPENVINO
+ENV INTEL_CVSDK_DIR ${INTEL_OPENVINO_DIR}
+ENV BUILD_OPENCV_DIR = /usr/local/lib
+
+#RUN echo "$INTEL_CVSDK_DIR"
+ENV InferenceEngine_DIR ${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
+ENV HDDL_INSTALL_DIR ${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl
+ENV LD_LIBRARY_PATH ${BUILD_OPENCV_DIR}:${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/armv7l
+ENV ngraph_DIR ${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/cmake
+ENV OpenCV_DIR ${BUILD_OPENCV_DIR}/cmake/opencv
+ENV PATH ${INTEL_OPENVINO_DIR}/deployment_tools/model_optimizer://deployment_tools/model_optimizer:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV PYTHONPATH ${INTEL_OPENVINO_DIR}/python/python3.7:${INTEL_OPENVINO_DIR}/deployment_tools/model_optimizer
+
+# CHECK ENVIRONMENT SETTINGS
+RUN echo "INTEL_OPENVINO_DIR = ${INTEL_OPENVINO_DIR}"
+RUN echo "INTEL_CVSDK_DIR = ${INTEL_CVSDK_DIR}"
+RUN echo "InferenceEngine_DIR = ${InferenceEngine_DIR}"
+RUN echo "HDDL_INSTALL_DIR = ${HDDL_INSTALL_DIR}"
+RUN echo "LD_LIBRARY_PATH = ${LD_LIBRARY_PATH}"
+RUN echo "ngraph_DIR = ${ngraph_DIR}"
+RUN echo "OpenCV_DIR = ${OpenCV_DIR}"
+RUN echo "PATH = ${PATH}"
+RUN echo "PYTHONPATH = ${PYTHONPATH}"
+
+EXPOSE 8888
+
+WORKDIR /app
+# RUN pwd
+# RUN ls -la
+CMD [ "python3", "./app.py"]
