@@ -31,8 +31,10 @@ inferenceMark = False
 sendDetection = False
 modelLoaded = False
 
-def update_reported_properties_of_loaded_model(client, od_model, fr_fd_model, fr_lm_model, fr_reid_model):
-    current_status = {"loaded_models": {'od':od_model, 'fr_fd':fr_fd_model, 'fr_lm':fr_lm_model, 'fr_reid':fr_reid_model }}
+def update_reported_properties_of_loaded_model(client, od_model, fr_fd_model, fr_lm_model, fr_reid_model, fr_ag_model):
+    if fr_ag_model:
+        fr_ag_model = 'none'
+    current_status = {"loaded_models": {'od':od_model, 'fr_fd':fr_fd_model, 'fr_lm':fr_lm_model, 'fr_reid':fr_reid_model, 'fr_ag':fr_ag_model }}
     client.patch_twin_reported_properties(current_status)
 
 def update_reported_properties_of_ipaddress(client, ipaddress):
@@ -123,10 +125,20 @@ def parse_desired_properties_request(client, configSpec, od, fr, configLock):
         lmModelName = configSpec[frModelFileKey]['lm-name']
         reidModelName = configSpec[frModelFileKey]['reid-name']
         logging.info(f'Receive request of face recognition model update - {modelFileName} - {modelUrl}')
+
+        agModelName = None
+        if 'ag-name' in configSpec[frModelFileKey]:
+            agModelName = configSpec[frModelFileKey]['ag-name']
+
         modelFolderPath = os.path.join(os.getcwd(), frModelFileKey)
         fdModelPath = os.path.join(modelFolderPath, fdModelName)
         lmModelPath = os.path.join(modelFolderPath, lmModelName)
         reidModelPath = os.path.join(modelFolderPath, reidModelName)
+        agModelPath = None
+        if agModelName:
+            agModelPath = os.path.join(modelFolderPath, agModelName)
+            logging.info(f'Use {agModelName} as age gender detection.')
+
         if os.path.exists(fdModelPath) and os.path.exists(lmModelPath) and os.path.exists(reidModelPath):
             logging.info(f'FD Model:{fdModelName}, LM Model:{lmModelName}, REID Model:{reidModelName} have been downloaded.')
         else:
@@ -135,8 +147,11 @@ def parse_desired_properties_request(client, configSpec, od, fr, configLock):
             fdModelPath = os.path.join(modelFolderPath, fdModelName)
             lmModelPath = os.path.join(modelFolderPath, lmModelName)
             reidModelPath = os.path.join(modelFolderPath, reidModelName)
+            if agModelName:
+                agModelPath = os.path.join(modelFolderPath, agModelName)
+
         configLock.acquire()
-        res = fr.LoadModel(fdModelPath, lmModelPath, reidModelPath)
+        res = fr.LoadModel(fdModelPath, lmModelPath, reidModelPath, agModelPath)
         configLock.release()
         if res == 0:
             logging.info('face recognition model load succeeded')
@@ -144,7 +159,7 @@ def parse_desired_properties_request(client, configSpec, od, fr, configLock):
     modelLoaded = odModelLoaded and frModelLoaded
 
     if odModelName and fdModelName and lmModelName and reidModelName and client:
-        update_reported_properties_of_loaded_model(client, odModelName, fdModelName, lmModelName, reidModelName)
+        update_reported_properties_of_loaded_model(client, odModelName, fdModelName, lmModelName, reidModelName, agModelName)
 
 def twin_patch_handler(patch):
     logging.info(f'Twin desired properties patch updated. - {patch}')
@@ -361,7 +376,7 @@ async def main():
             nowTime = datetime.datetime.now()
             timeDelta = nowTime - faceRecognizer.GetScoredTime()
             logging.info(f'process time - now={nowTime}, scored time={faceRecognizer.GetScoredTime()}')
-            detectedObjects, inferencedImageFile = faceRecognizer.Process(frame, inferenceMark)
+            detectedObjects, output_frame = faceRecognizer.Process(frame, inferenceMark)
             isSendTelemetry = sendDetection
             configLock.release()
 
@@ -380,13 +395,17 @@ async def main():
                     if fileUploader:
                         imageData = None
                         if inferenceMark:
-                            imageData = open(inferencedImageFile, 'rb')
-                            pilImage = Image.open(imageData)
+                            pilImage = cv2pil(output_frame)
+                            imageData = io.BytesIO()
+                            pilImage.save(imageData,'JPEG')
+                            imageData = imageData.getvalue()
+                            # imageData = open(inferencedImageFile, 'rb')
+                            # pilImage = Image.open(imageData)
                         else:
                             imageData = io.BytesIO(request.get_data())
-                        fileUploader.upload(imageData, IOTEDGE_DEVICEID, '{0:%Y%m%d%H%M%S%f}'.format(datetime.datetime.now()), pilImage.format.lower())
-                        if inferenceMark:
-                           imageData.close()
+                        fileUploader.upload(imageData, IOTEDGE_DEVICEID, '{0:%Y%m%d%H%M%S%f}'.format(datetime.datetime.now()), 'jpg')
+                        # if inferenceMark:
+                        #   imageData.close()
                 respBody = {
                     'inferences' : detectedObjects
                 }
@@ -452,9 +471,9 @@ async def main():
                             # pilImage = Image.open(imageData)
                         else:
                             imageData = io.BytesIO(request.get_data())
-                        fileUploader.upload(imageData, IOTEDGE_DEVICEID, '{0:%Y%m%d%H%M%S%f}'.format(datetime.datetime.now()), pilImage.format.lower())
-                        if inferenceMark:
-                           imageData.close()
+                        fileUploader.upload(imageData, IOTEDGE_DEVICEID, '{0:%Y%m%d%H%M%S%f}'.format(datetime.datetime.now()), 'jpg')
+                        # if inferenceMark:
+                        #   imageData.close()
                 scored_time = nowTime
                 respBody = {
                     'inferences' : detectedObjects

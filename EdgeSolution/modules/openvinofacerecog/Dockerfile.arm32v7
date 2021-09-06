@@ -1,4 +1,6 @@
+# OpenVino Face Recognition Module build file for Raspberry Pi Raspbian arm32v7
 FROM arm32v7/python:3.7-slim-buster
+# When you want to build this module for other OS or CPU Architecture, please replace base image in https://hub.docker.com/_/python/
 
 SHELL ["/bin/bash", "-c"]
 
@@ -24,6 +26,7 @@ RUN rm -fr open_model_zoo
 
 ENV INTEL_OPENVINO_DIR /opt/intel/openvino_2021
 
+# When you want to use this module on other OS or CPU architecture, please replace tgz file in https://storage.openvinotoolkit.org/repositories/openvino/packages/2021.4/
 RUN wget https://storage.openvinotoolkit.org/repositories/openvino/packages/2021.4/l_openvino_toolkit_runtime_raspbian_p_2021.4.582.tgz && \
     mkdir -p /opt/intel/openvino_2021 && \
     tar -xf l_openvino_toolkit_runtime_raspbian_p_2021.4.582.tgz --strip 1 -C /opt/intel/openvino_2021 && \

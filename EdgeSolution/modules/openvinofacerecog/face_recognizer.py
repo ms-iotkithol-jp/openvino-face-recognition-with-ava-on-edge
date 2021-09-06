@@ -17,6 +17,7 @@ from landmarks_detector import LandmarksDetector
 from face_detector import FaceDetector
 from faces_database import FacesDatabase
 from face_identifier import FaceIdentifier
+from age_gender_detector import AgeGenderDetector
 
 import monitors
 from helpers import resolution
@@ -41,6 +42,7 @@ class FaceRecognizer:
         self.d_fd = device
         self.d_lm = device
         self.d_reid = device
+        self.d_ag = device
         self.fd_input_size = (0,0)
         self.t_fd = 0.6
         self.t_id = 0.3
@@ -54,12 +56,18 @@ class FaceRecognizer:
         self.landmarks_detector = None
         self.face_identifier = None
         self.faces_database = None
+        self.age_gender_detector = None
    
-    def LoadModel(self, m_fd, m_lm, m_reid):
-        log.info('Loading networks...')
+    def LoadModel(self, m_fd, m_lm, m_reid, m_ag=None):
+        # m_ag: model for age gender. this feature is optional
+        log.info('Loading face recognition networks...')
         self.model_fd = Path(m_fd)
         self.model_lm = Path(m_lm)
         self.model_reid = Path(m_reid)
+        self.model_ag = None
+        if m_ag:
+            self.model_ag = Path(m_ag)
+            log.info(' with age gender model...')
         self.face_detector = FaceDetector(self.ie, self.model_fd,
                                           self.fd_input_size,
                                           confidence_threshold=self.t_fd,
@@ -71,6 +79,10 @@ class FaceRecognizer:
         self.face_detector.deploy(self.d_fd, self.get_config(self.d_fd))
         self.landmarks_detector.deploy(self.d_lm, self.get_config(self.d_lm), self.QUEUE_SIZE)
         self.face_identifier.deploy(self.d_reid, self.get_config(self.d_reid), self.QUEUE_SIZE)
+        self.age_gender_detector = None
+        if self.model_ag:
+            self.age_gender_detector = AgeGenderDetector(self.ie, self.model_ag)
+            self.age_gender_detector.deploy(self.d_ag, self.get_config(self.d_ag), self.QUEUE_SIZE)
 
         log.info('Building faces database using images from "{}"'.format(self.fg))
         self.faces_database = FacesDatabase(self.fg, self.face_identifier,
@@ -100,6 +112,13 @@ class FaceRecognizer:
 
         landmarks = self.landmarks_detector.infer((frame, rois))
         face_identities, unknowns = self.face_identifier.infer((frame, rois, landmarks))
+        ageGenders = []
+        if self.age_gender_detector:
+            ageGenders = self.age_gender_detector.infer((frame, rois))
+        else:
+            for r in rois:
+                ageGenders.append(None)
+
         if self.allow_grow and len(unknowns) > 0:
             for i in unknowns:
                 # This check is preventing asking to save half-images in the boundary of images
@@ -112,8 +131,9 @@ class FaceRecognizer:
                 if name:
                     id = self.faces_database.dump_faces(crop_image, face_identities[i].descriptor, name)
                     face_identities[i].id = id
+        
         output_transform = OutputTransform(frame.shape[:2], None)
-        results, frame = self.draw_detections(frame, [rois, landmarks, face_identities], output_transform, inferenceMark)
+        results, frame = self.draw_detections(frame, [rois, landmarks, face_identities, ageGenders], output_transform, inferenceMark)
 
         # output_filename = 'fr-result.bmp'
         #if inferenceMark:
@@ -126,11 +146,14 @@ class FaceRecognizer:
         size = frame.shape[:2]
         frame = output_transform.resize(frame)
         results = []
-        for roi, landmarks, identity in zip(*detections):
+        for roi, landmarks, identity, ageGender in zip(*detections):
             text = self.face_identifier.get_identity_label(identity.id)
             identified_label = text
             if identity.id != FaceIdentifier.UNKNOWN_ID:
                 text += ' %.2f%%' % (100.0 * (1 - identity.distance))
+            if ageGender:
+                text += f' {ageGender.gender[0]}'
+                text += ' {:.1f}'.format(ageGender.age)
 
             xmin = max(int(roi.position[0]), 0)
             ymin = max(int(roi.position[1]), 0)
@@ -148,6 +171,9 @@ class FaceRecognizer:
                 cv2.rectangle(frame, (xmin, ymin), (xmin + textsize[0], ymin - textsize[1]), (255, 255, 255), cv2.FILLED)
                 cv2.putText(frame, text, (xmin, ymin), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 1)
             identified = {'id':identified_label, 'distance':identity.distance, 'box': { 'l': xmin, 't':ymin, 'w':xmax-xmin, 'h':ymax-ymin } }
+            if ageGender:
+                identified['gender'] = {'gender':ageGender.gender, 'male_score':float(ageGender.male_score), 'female_score':float(ageGender.female_score)}
+                identified['age'] = float(ageGender.age)
             results.append(identified)
 
         if len(results) > 0:

@@ -60,9 +60,6 @@ class ObjectDetector:
         self.plugin_config = get_user_config(self.device, self.num_streams, self.num_threads)
         self.scored_time = datetime.datetime.strptime('2000-01-01 00:00:00', '%Y-%m-%d %H:%M:%S')
 
-
-
-
     class ColorPalette:
         def __init__(self, n, rng=None):
             assert n > 0
