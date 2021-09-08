@@ -30,6 +30,7 @@ intervalSec = 60
 inferenceMark = False
 sendDetection = False
 modelLoaded = False
+FACEDB_FOLDER_NAME = None
 
 def update_reported_properties_of_loaded_model(client, od_model, fr_fd_model, fr_lm_model, fr_reid_model, fr_ag_model):
     if fr_ag_model:
@@ -116,7 +117,7 @@ def parse_desired_properties_request(client, configSpec, od, fr, configLock):
             logging.info('object detection model load succeeded')
         odModelLoaded = True
 
-
+    global FACEDB_FOLDER_NAME
     frModelFileKey = 'model-fr'
     if frModelFileKey in configSpec:
         modelUrl = configSpec[frModelFileKey]['url']
@@ -125,7 +126,7 @@ def parse_desired_properties_request(client, configSpec, od, fr, configLock):
         lmModelName = configSpec[frModelFileKey]['lm-name']
         reidModelName = configSpec[frModelFileKey]['reid-name']
         logging.info(f'Receive request of face recognition model update - {modelFileName} - {modelUrl}')
-
+        
         agModelName = None
         if 'ag-name' in configSpec[frModelFileKey]:
             agModelName = configSpec[frModelFileKey]['ag-name']
@@ -149,6 +150,13 @@ def parse_desired_properties_request(client, configSpec, od, fr, configLock):
             reidModelPath = os.path.join(modelFolderPath, reidModelName)
             if agModelName:
                 agModelPath = os.path.join(modelFolderPath, agModelName)
+
+        if 'face-db' in configSpec:
+            faceDBSpec = configSpec['face-db']
+            faceDBUrl = faceDBSpec['url']
+            faceDBFileName = faceDBSpec['filename']
+            logging.info(f'faced-db file is {faceDBFileName}, extract to {FACEDB_FOLDER_NAME}')
+            folderPath = downloadModelsFile(faceDBUrl, faceDBFileName, FACEDB_FOLDER_NAME)
 
         configLock.acquire()
         res = fr.LoadModel(fdModelPath, lmModelPath, reidModelPath, agModelPath)
@@ -283,7 +291,7 @@ async def main():
         fileUploader = FileUploader(BLOB_ON_EDGE_MODULE, BLOB_ON_EDGE_ACCOUNT_NAME, BLOB_ON_EDGE_ACCOUNT_KEY, BLOB_CONTAINER_NAME)
         fileUploader.initialize()
         logging.info('FileUploader initialized.')
-    FACEDB_FOLDER_NAME = None
+    global FACEDB_FOLDER_NAME
     if 'FACEDB_FOLDER_NAME' in os.environ:
         FACEDB_FOLDER_NAME = os.environ['FACEDB_FOLDER_NAME']
     else:

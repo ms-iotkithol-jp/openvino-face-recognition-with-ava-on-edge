@@ -66,7 +66,6 @@ cd opmodel
 tar zcvf od-model.taz yolo-v2-ava-001.xml yolo-v2-ava-001.bin voc_20cl.txt
 ```
 
-
 #### Face Recognition 
 OpenVino Face Recognition logic use following models  
 |Usage|Model|
@@ -91,7 +90,16 @@ cp intel/age-gender-recognition-retail-0013/FP16/* ~/frmodel
 cd ~/frmodel
 tar zcvf fr-model.tgz face-detection-retail-0004.* landmarks-regression-retail-0009.* face-reidentification-retail-0095.* age-gender-recognition-retail-0013.*
 ```
+
+Next create face database for reidentification model. 
+1. Prepare images taken from the front of the face for each person in JPEG format and store them into same folder.
+1. Create gzipped tar file including the face image files.
+```sh
+tar zcvf facedb.tgz john.jpg bob.jpg ...
+```
+
 After created tgz file, upload it to Azure Blob Container and create URL with SAS Token for downloading by IoT Edge Module.  
+
 
 ## Deploy Module
 ### Create Options  
@@ -145,6 +153,10 @@ After created tgz file, upload it to Azure Blob Container and create URL with SA
         "lm-name": "landmarks-regression-retail-0009.xml",
         "reid-name": "face-reidentification-retail-0095.xml",
         "ag-model" : "age-gender-recognition-retail-0013.xml"
+    },
+    "face-db": {
+        "url": "<- url of face-database.tgz ->",
+        "filename": "facedb.tgz"
     }
 }
 ```
