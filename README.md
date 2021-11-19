@@ -173,3 +173,6 @@ For the case of Raspberry Pi + INTEL Movidius
 |OPENVINO_DEVICE|MYRIAD|
 |MSG_OUTPUT_PATH_OD|message output path for object detection. ex) output_od|
 |MSG_OUTPUT_PATH_FR|message output path for face recognition. ex) output_fr|
+
+## Additional Information  
+When you want to use this IoT Edge Module quickly. You can use embeddedgeorge/openvinofacerecog:0.5.1-arm32v7 .

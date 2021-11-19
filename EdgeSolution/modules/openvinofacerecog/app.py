@@ -411,7 +411,7 @@ async def main():
                             # pilImage = Image.open(imageData)
                         else:
                             imageData = io.BytesIO(request.get_data())
-                        fileUploader.upload(imageData, IOTEDGE_DEVICEID, '{0:%Y%m%d%H%M%S%f}'.format(datetime.datetime.now()), 'jpg')
+                        fileUploader.upload(imageData, IOTEDGE_DEVICEID, '{0:%Y%m%d%H%M%S%f}'.format(nowTime), 'jpg')
                         # if inferenceMark:
                         #   imageData.close()
                 respBody = {
