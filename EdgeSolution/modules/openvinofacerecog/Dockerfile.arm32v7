@@ -14,7 +14,6 @@ RUN apt-get update && \
 
 RUN mkdir /app
 COPY * /app/
-COPY /etc/os-release /app
 
 WORKDIR /build
 
