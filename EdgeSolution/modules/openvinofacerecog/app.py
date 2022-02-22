@@ -450,7 +450,8 @@ async def main():
             configLock.release()
 
             logging.info('Scored.')
-            if isSendTelemetry and len(detectedObjects)>0:
+            #if isSendTelemetry and len(detectedObjects)>0:
+            if isSendTelemetry:    
                 totalDtected = 0
                 detected = {}
                 for d in detectedObjects:
