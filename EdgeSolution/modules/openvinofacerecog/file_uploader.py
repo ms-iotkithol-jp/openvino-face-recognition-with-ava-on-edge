@@ -11,11 +11,14 @@ class FileUploader:
     def __init__(self, blobonedge_module_name, blob_account_name, blob_account_key, container_name):
         netinfo = self.getipaddress()
         hostname = blobonedge_module_name
-        if 'eth0' in netinfo:
-            hostname = netinfo['eth0']
-            logging.info(f'hostname chaneged -> {hostname}')
+        if 'wwan0' in netinfo:
+            hostname = netinfo['wwan0']
+            logging.info(f'hostname chaneged -> {hostname}')            
         elif 'wlan0' in netinfo:
             hostname = netinfo['wlan0']
+            logging.info(f'hostname chaneged -> {hostname}')
+        elif 'eth0' in netinfo:
+            hostname = netinfo['eth0']
             logging.info(f'hostname chaneged -> {hostname}')
         connectionString = f'DefaultEndpointsProtocol=http;BlobEndpoint=http://{hostname}:11002/{blob_account_name};AccountName={blob_account_name};AccountKey={blob_account_key};'
         self.blobServiceClient = BlobServiceClient.from_connection_string(conn_str=connectionString, api_version='2017-04-17')
@@ -45,7 +48,7 @@ class FileUploader:
     def getipaddress(self):
         logging.info( 'Checking host IP address...')
         netinfo = {}
-        for netname in ["eth0", "wlan0"]:
+        for netname in ["eth0", "wlan0", "wwan0"]:
             proc = subprocess.run("/sbin/ip address show {}".format(netname), shell=True, stdout=PIPE)
             l = str(proc.stdout)
             logging.info(str(l))
